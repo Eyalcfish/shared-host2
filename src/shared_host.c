@@ -99,7 +99,7 @@ shared_connection* connect_shared_connection(shared_socket* socket) {
     connection->origin_socket = socket;
     connection->shared_state_table = buffer;
 
-    while(*(char*)connection->shared_state_table == 0) {
+    while(*(char*)(connection->shared_state_table) == 0) {
         sleep(1); // wait for the accept action
     }
 
