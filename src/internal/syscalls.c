@@ -32,6 +32,10 @@ void* allocate_round_shm_buffer(size_t size, const char* name) {
 void* connect_to_shm_buffer(size_t* out_size, const char* name) {
     int fd = shm_open(name, O_RDWR, 0600);
 
+    if (fd == ENOENT) {
+        return 0;
+    }
+
     struct stat st;
     fstat(fd, &st);
     *out_size = st.st_size;
