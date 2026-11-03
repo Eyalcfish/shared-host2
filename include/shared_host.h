@@ -1,0 +1,42 @@
+#ifndef SHARED_HOST_H
+#define SHARED_HOST_H
+
+#include <stddef.h>
+
+typedef int error;
+
+typedef struct shared_socket {
+    const char* name;
+    size_t size;
+} shared_socket;
+
+typedef struct shared_connection shared_connection;
+
+typedef struct shared_message {
+    size_t size;
+    void* buffer;
+    shared_connection* origin; // mainly for freeing
+} shared_message;
+
+typedef struct shared_connection {
+    error (*send)(shared_message*); // normal send
+    shared_message* (*read)(shared_connection*); // normal read
+
+    shared_message* (*claim_send)(shared_connection*, size_t); // zero copy send claim
+    error (*publish)(shared_message*); // zero copy send publish
+
+    shared_message* (*claim_read)(shared_connection*); // zero copy read claim
+    error (*drop)(shared_message*); // zero copy read free
+} shared_connection;
+
+shared_socket* create_shared_socket(const char* name); // has default size
+
+error bind_shared_socket(shared_socket* socket);
+
+error listen_shared_socket(shared_socket* socket);
+
+shared_connection* accept_shared_connection(shared_socket* socket);
+
+shared_connection* connect_shared_connection(shared_socket* socket);
+
+#endif
