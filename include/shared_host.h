@@ -4,10 +4,14 @@
 #include <stddef.h>
 
 typedef int error;
+typedef char SocketState;
+typedef char Job; // i.e server/client
 
 typedef struct shared_socket {
     const char* name;
     size_t size;
+    size_t flags;
+    SocketState state;
 } shared_socket;
 
 typedef struct shared_connection shared_connection;
@@ -19,6 +23,10 @@ typedef struct shared_message {
 } shared_message;
 
 typedef struct shared_connection {
+    Job job;
+    shared_socket* origin_socket;
+    void* shared_buffer;
+
     error (*send)(shared_message*); // normal send
     shared_message* (*read)(shared_connection*); // normal read
 
