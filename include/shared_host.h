@@ -57,6 +57,8 @@ error close_connection(shared_connection* connection);
 
 error unregister_socket(shared_socket* socket);
 
+error free_message(shared_message* message);
+
 #define SHARED_HOST_CLIENT 0
 #define SHARED_HOST_SERVER 1
 

@@ -23,7 +23,7 @@ int main () {
         printf("Parent: registered socket, now accepting connection...\n");
         shared_connection* connection = accept_shared_connection(socket);
         printf("Parent: connected! to %s\n", connection->shared_state_table_name);
-        sleep(1);
+        sleep(2);
         printf("Message: %c\n", *(char*)connection->shared_state_table);
         sleep(4);
         close_connection(connection);
