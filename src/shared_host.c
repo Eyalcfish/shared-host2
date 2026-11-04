@@ -53,15 +53,46 @@ error register_shared_socket(shared_socket* socket) {
 }
 
 shared_connection* accept_shared_connection(shared_socket* socket) {
+    char* page_name = get_string_with_socket_suffix(socket->name);
+    void* buffer = allocate_shm_buffer(4096, page_name);
+    free(page_name);
 
-    return 0;
+    memcpy(buffer, (void*)socket, sizeof(shared_socket)); // copy all of the socket properties
+    buffer += sizeof(shared_socket);
+
+    size_t prepared_key = 0;
+
+    while (prepared_key == 0) {
+        for (int i = 0 ; i < 4096/sizeof(size_t) ; i++) {
+            if (atomic_load(&(((_Atomic size_t*)buffer)[i])) != 0) { // mark the new connection in the socket
+                prepared_key = (((_Atomic size_t*)buffer)[i]);
+                (((_Atomic size_t*)buffer)[i]) = 0;
+                break;
+            }
+        }
+        sleep(1);
+    }
+
+    size_t useless = 0;
+
+    char* connection_table_name = translate_key_to_hexa_string(prepared_key);
+    buffer = connect_to_shm_buffer(&useless, connection_table_name); // allocate the state page of the connection
+    free(connection_table_name);
+
+    shared_connection* connection = (shared_connection*)malloc(sizeof(shared_connection));
+
+    connection->job = SHARED_HOST_SERVER;
+    connection->origin_socket = socket;
+    connection->shared_state_table = buffer;
+
+    *(char*)connection->shared_state_table = 1;
+
+    return connection;
 }
 
 shared_connection* connect_shared_connection(shared_socket* socket) {
-    size_t socket_table_size = 0;
-
     char* page_name = get_string_with_socket_suffix(socket->name);
-    void* buffer = connect_to_shm_buffer(&socket_table_size, page_name);
+    void* buffer = connect_to_shm_buffer(&socket->size, page_name);
     free(page_name);
 
     memcpy((void*)socket, buffer, sizeof(shared_socket)); // copy all of the socket properties
@@ -74,21 +105,21 @@ shared_connection* connect_shared_connection(shared_socket* socket) {
         prepared_key = rand();
         prepared_key += prepared_key == 0; // prepared key cannot be equal to 0
         value_found = 0;
-        for (int i = 0 ; i < socket_table_size/sizeof(size_t) ; i++) {
+        for (int i = 0 ; i < socket->size/sizeof(size_t) ; i++) {
             if (((size_t*)buffer)[i] == prepared_key) {
                 value_found = 1;
             }
         }
     }
 
-    for (int i = 0 ; i < socket_table_size/sizeof(size_t) ; i++) {
+    for (int i = 0 ; i < socket->size/sizeof(size_t) ; i++) {
         if (atomic_compare_exchange_strong(&(((_Atomic size_t*)buffer)[i]), 0, prepared_key)) { // mark the new connection in the socket
             break;
         }
     }
 
     char* connection_table_name = translate_key_to_hexa_string(prepared_key);
-    buffer = allocate_shm_buffer(socket->size, connection_table_name); // allocate the state page of the connection
+    buffer = allocate_shm_buffer(4096, connection_table_name); // allocate the state page of the connection
     free(connection_table_name);
 
     // TODO: put public keys inside the state page
