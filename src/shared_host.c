@@ -7,6 +7,7 @@
 #include <time.h>
 #include <stdatomic.h>
 #include <unistd.h>
+#include <stdio.h>
 
 char* get_string_with_socket_suffix(const char* name) {
     int name_size = strlen(name);
@@ -29,7 +30,7 @@ char* translate_key_to_hexa_string(size_t key) {
         if (cur >= 10) {
             hexa_string[i] = 'A' + cur-10;
         } else {
-            hexa_string[i] = cur;
+            hexa_string[i] = '0' + cur;
         }
 
         key = key >> 4; // prepare the prepared key for the next iteration
@@ -53,24 +54,21 @@ void set_functions(shared_connection* connection, size_t flags) {
 
 shared_socket* create_shared_socket(const char* name) {
     shared_socket* ret = (shared_socket*)malloc(sizeof(shared_socket));
+    ret->name = name;
     return ret;
 }
 
 error register_shared_socket(shared_socket* socket) {
     char* page_name = get_string_with_socket_suffix(socket->name);
-    void* buffer = allocate_shm_buffer(4096, page_name); // allocate the shm socket buffer
+    socket->socket_table_buffer = allocate_shm_buffer(4096, page_name); // allocate the shm socket buffer
     free(page_name);
 
     return 0;
 }
 
 shared_connection* accept_shared_connection(shared_socket* socket) {
-    char* page_name = get_string_with_socket_suffix(socket->name);
-    void* buffer = allocate_shm_buffer(4096, page_name);
-    free(page_name);
-
-    memcpy(buffer, (void*)socket, sizeof(shared_socket)); // copy all of the socket properties
-    buffer += sizeof(shared_socket);
+    memcpy(socket->socket_table_buffer, (void*)socket, sizeof(shared_socket)); // copy all of the socket properties
+    void* buffer = socket->socket_table_buffer + sizeof(shared_socket);
 
     size_t prepared_key = 0;
 
@@ -89,27 +87,37 @@ shared_connection* accept_shared_connection(shared_socket* socket) {
 
     char* connection_table_name = translate_key_to_hexa_string(prepared_key);
     buffer = connect_to_shm_buffer(&useless, connection_table_name); // allocate the state page of the connection
-    free(connection_table_name);
 
     shared_connection* connection = (shared_connection*)malloc(sizeof(shared_connection));
 
     connection->job = SHARED_HOST_SERVER;
     connection->origin_socket = socket;
     connection->shared_state_table = buffer;
+    connection->shared_state_table_name = connection_table_name;
 
     set_functions(connection, socket->flags);
 
-    *(char*)connection->shared_state_table = 1;
+    atomic_store((_Atomic char*)connection->shared_state_table, 1);
 
     return connection;
 }
 
 shared_connection* connect_shared_connection(shared_socket* socket) {
+    void* buffer = 0;
     char* page_name = get_string_with_socket_suffix(socket->name);
-    void* buffer = connect_to_shm_buffer(&socket->size, page_name);
-    free(page_name);
+    for(int i = 0 ; i < 3 ; i ++) { // retry connecting 3 times
+        buffer = connect_to_shm_buffer(&socket->size, page_name);
+        if (buffer != 0) {
+            break;
+        }
+        sleep(1);
+    }
+
+    size_t socket_table_size = socket->size;
 
     memcpy((void*)socket, buffer, sizeof(shared_socket)); // copy all of the socket properties
+
+    buffer += sizeof(shared_socket);
 
     srand(time(NULL));
     size_t prepared_key = 0;
@@ -119,22 +127,27 @@ shared_connection* connect_shared_connection(shared_socket* socket) {
         prepared_key = rand();
         prepared_key += prepared_key == 0; // prepared key cannot be equal to 0
         value_found = 0;
-        for (int i = 0 ; i < socket->size/sizeof(size_t) ; i++) {
+        for (int i = 0 ; i < socket_table_size/sizeof(size_t) ; i++) {
             if (((size_t*)buffer)[i] == prepared_key) {
                 value_found = 1;
             }
         }
     }
 
-    for (int i = 0 ; i < socket->size/sizeof(size_t) ; i++) {
-        if (atomic_compare_exchange_strong(&(((_Atomic size_t*)buffer)[i]), 0, prepared_key)) { // mark the new connection in the socket
+    size_t expected = 0;
+
+    for (int i = 0 ; i < socket_table_size/sizeof(size_t) ; i++) {
+        if (atomic_compare_exchange_strong(&(((_Atomic size_t*)buffer)[i]), &expected, prepared_key)) { // mark the new connection in the socket
             break;
         }
     }
 
+    buffer -= sizeof(shared_socket); // close the mapping of the socket
+    free_shm_buffer(buffer, page_name);
+    free(page_name);
+
     char* connection_table_name = translate_key_to_hexa_string(prepared_key);
     buffer = allocate_shm_buffer(4096, connection_table_name); // allocate the state page of the connection
-    free(connection_table_name);
 
     // TODO: put public keys inside the state page
 
@@ -143,12 +156,44 @@ shared_connection* connect_shared_connection(shared_socket* socket) {
     connection->job = SHARED_HOST_CLIENT;
     connection->origin_socket = socket;
     connection->shared_state_table = buffer;
+    connection->shared_state_table_name = connection_table_name;
 
     set_functions(connection, socket->flags);
 
-    while(*(char*)(connection->shared_state_table) == 0) {
+    while(atomic_load((_Atomic char*)(connection->shared_state_table)) == 0) {
         sleep(1); // wait for the accept action
     }
 
     return connection;
+}
+
+error close_connection(shared_connection* connection) {
+    if (atomic_load((_Atomic char*)connection->shared_state_table) == 2) {
+        free_shm_buffer_and_close_file(connection->shared_state_table,connection->shared_state_table_name);
+        // free_round_shm_buffer_and_close_file(connection->own_payload_buffer, connection->own_payload_buffer_name);
+        // free_round_shm_buffer_and_close_file(connection->opp_payload_buffer, connection->opp_payload_buffer_name);
+        free(connection->shared_state_table_name);
+        if (connection->job == SHARED_HOST_CLIENT) {
+            free(connection->origin_socket);
+        }
+        free(connection);
+    } else {
+        atomic_store((_Atomic char*)connection->shared_state_table, 2);
+        free_shm_buffer(connection->shared_state_table,connection->shared_state_table_name);
+        // free_round_shm_buffer(connection->own_payload_buffer, connection->own_payload_buffer_name);
+        // free_round_shm_buffer(connection->opp_payload_buffer, connection->opp_payload_buffer_name);
+        free(connection->shared_state_table_name);
+        if (connection->job == SHARED_HOST_CLIENT) {
+            free(connection->origin_socket);
+        }
+        free(connection);
+    }
+    return 0;
+}
+
+error unregister_socket(shared_socket *socket) {
+    char* page_name = get_string_with_socket_suffix(socket->name);
+    free_shm_buffer_and_close_file(socket->socket_table_buffer, page_name); // allocate the shm socket buffer
+    free(page_name);
+    return 0;
 }

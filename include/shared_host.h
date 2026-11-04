@@ -11,6 +11,7 @@ typedef struct shared_socket { // For the future i can deifne in the socket tabl
     const char* name;
     size_t size;
     size_t flags;
+    void* socket_table_buffer;
     SocketState state;
 } shared_socket;
 
@@ -23,9 +24,14 @@ typedef struct shared_message {
 } shared_message;
 
 typedef struct shared_connection {
-    Job job;
     shared_socket* origin_socket;
     void* shared_state_table;
+    void* own_payload_buffer;
+    void* opp_payload_buffer;
+
+    char* shared_state_table_name;
+    char* own_payload_buffer_name;
+    char* opp_payload_buffer_name;
 
     error (*send)(shared_message*); // normal send
     shared_message* (*read)(shared_connection*); // normal read
@@ -35,6 +41,8 @@ typedef struct shared_connection {
 
     shared_message* (*claim_read)(shared_connection*); // zero copy read claim
     error (*drop)(shared_message*); // zero copy read free
+
+    Job job;
 } shared_connection;
 
 shared_socket* create_shared_socket(const char* name); // has default size
@@ -45,9 +53,11 @@ shared_connection* accept_shared_connection(shared_socket* socket);
 
 shared_connection* connect_shared_connection(shared_socket* socket);
 
+error close_connection(shared_connection* connection);
+
+error unregister_socket(shared_socket* socket);
+
 #define SHARED_HOST_CLIENT 0
 #define SHARED_HOST_SERVER 1
-
-
 
 #endif
