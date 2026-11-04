@@ -1,5 +1,6 @@
 #include "../include/shared_host.h"
 #include "../include/internal/syscalls.h"
+#include "../include/internal/read_write.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
@@ -37,6 +38,17 @@ char* translate_key_to_hexa_string(size_t key) {
     hexa_string[sizeof(size_t)*2] = 0; // EOF
 
     return hexa_string;
+}
+
+void set_functions(shared_connection* connection, size_t flags) {
+    connection->send = basic_send;
+    connection->read = basic_read;
+
+    connection->claim_send = basic_zc_claim_for_send;
+    connection->publish = basic_zc_publish_for_send;
+
+    connection->claim_read = basic_zc_claim_for_read;
+    connection->drop = basic_zc_drop_for_send;
 }
 
 shared_socket* create_shared_socket(const char* name) {
@@ -85,6 +97,8 @@ shared_connection* accept_shared_connection(shared_socket* socket) {
     connection->origin_socket = socket;
     connection->shared_state_table = buffer;
 
+    set_functions(connection, socket->flags);
+
     *(char*)connection->shared_state_table = 1;
 
     return connection;
@@ -129,6 +143,8 @@ shared_connection* connect_shared_connection(shared_socket* socket) {
     connection->job = SHARED_HOST_CLIENT;
     connection->origin_socket = socket;
     connection->shared_state_table = buffer;
+
+    set_functions(connection, socket->flags);
 
     while(*(char*)(connection->shared_state_table) == 0) {
         sleep(1); // wait for the accept action
