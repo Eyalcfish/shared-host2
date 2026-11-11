@@ -5,10 +5,13 @@
 
 typedef struct StateTable {
     char flag; // 0: connected but not accepted, 1: connected and talking, 2: closed connection
+    size_t client_write_offset; // client producer server consumer
     size_t server_read_offset;
-    size_t server_write_offset;
+
+    char padding[64];
+
+    size_t server_write_offset; // server producer client consumer
     size_t client_read_offset;
-    size_t client_write_offset;
 } StateTable;
 
 error basic_send_client(shared_message* message); // normal send client

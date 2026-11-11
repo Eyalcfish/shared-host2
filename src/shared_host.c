@@ -116,17 +116,6 @@ shared_connection* accept_shared_connection(shared_socket* socket) {
 
     atomic_store((_Atomic char*)connection->shared_state_table, 1); // signal to the client that you've accepted
 
-//     shared_message* message = (shared_message*)malloc(sizeof(shared_message));
-//     message->origin = connection;
-//     message->buffer = (char*)malloc(3);
-//     message->size = 3;
-//     ((char*)message->buffer)[0] = 'E';
-//     ((char*)message->buffer)[0] = 'C';
-//     ((char*)message->buffer)[0] = 0;
-//
-//     connection->send(message);
-//     free_message(connection->read(connection));
-
     return connection;
 }
 
@@ -197,17 +186,6 @@ shared_connection* connect_shared_connection(shared_socket* socket) {
 
     connection->opp_payload_buffer = connect_to_round_shm_buffer(&connection->origin_socket->size, connection->opp_payload_buffer_name);
     connection->own_payload_buffer = connect_to_round_shm_buffer(&connection->origin_socket->size, connection->own_payload_buffer_name);
-
-//     shared_message* message = (shared_message*)malloc(sizeof(shared_message));
-//     message->origin = connection;
-//     message->buffer = (char*)malloc(3);
-//     message->size = 3;
-//     ((char*)message->buffer)[0] = 'E';
-//     ((char*)message->buffer)[0] = 'C';
-//     ((char*)message->buffer)[0] = 0;
-//
-//     free_message(connection->read(connection));
-//     connection->send(message);
 
     return connection;
 }

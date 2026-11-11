@@ -43,8 +43,6 @@ int main () {
         message.size = strlen(msg)+1;
 
         shared_message* ret = connection->read(connection);
-        printf("asdadasdasd]\n");
-
 
         printf("Parent: recieved: %s\n", (char*)ret->buffer);
         free_message(ret);
