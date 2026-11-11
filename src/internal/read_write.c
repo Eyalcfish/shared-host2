@@ -86,7 +86,6 @@ shared_message* basic_read_server(shared_connection* connection) {
     memcpy(message->buffer, (connection->own_payload_buffer+settings->server_read_offset), message->size);
 
     settings->server_read_offset += message->size;
-    printf("Stats: %ld %ld %ld\n", settings->client_write_offset, settings->server_read_offset, message->size);
 
     return message;
 } // normal read server
