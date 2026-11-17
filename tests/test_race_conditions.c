@@ -2,6 +2,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <string.h>
+#include "../include/internal/read_write.h"
 
 #define EPOCHS 10
 
@@ -22,15 +23,18 @@ int main () {
 
         for(int i = 0 ; i < EPOCHS ; i ++) {
             connection->send(&message);
+            StateTable* table = ((StateTable*)(connection->shared_state_table));
+            printf("Client Write> %d off read: %ld write: %ld\n", i, table->client_read_offset, table->client_write_offset);
 
             sleep(1);
 
             shared_message* ret = connection->read(connection);
             // if (strcmp(ret->buffer, "Hello Child!") != 0) {
-                printf("Nope %s %d\n", ret->buffer, i);
+            printf("Client Read> %s %d off read: %ld write: %ld\n", (char*)ret->buffer, i, table->client_read_offset, table->client_write_offset);
                 // return 0;
             // }
             free_message(ret);
+
         }
 
         sleep(5);
@@ -56,12 +60,16 @@ int main () {
             shared_message* ret = connection->read(connection);
 
             // if (strcmp(ret->buffer, "Hello Parent!") != 0) {
-                printf("Nope %s %d\n", ret->buffer, i);
+            StateTable* table = ((StateTable*)(ret->origin->shared_state_table));
+
+            printf("Server Read> %s %d off read: %ld, off write: %ld\n", (char*)ret->buffer, i, table->server_read_offset, table->server_write_offset);
                 // return 0;
             // }
             free_message(ret);
             sleep(1);
             connection->send(&message);
+            printf("Server Write> %d off read: %ld, off write: %ld\n", i, table->server_read_offset, table->server_write_offset);
+
         }
 
         sleep(5);

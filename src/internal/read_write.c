@@ -27,7 +27,7 @@ error basic_send_client(shared_message* message) {
     shared_connection* connection = message->origin;
     StateTable* settings = (StateTable*)(connection->shared_state_table);
 
-    while ((settings->client_write_offset < settings->server_write_offset && settings->client_write_offset+sizeof(void*)+message->size >= settings->client_read_offset)) {
+    while ((settings->client_write_offset < settings->server_write_offset && settings->client_write_offset+sizeof(void*)+message->size >= settings->server_read_offset)) {
         // loop waiting for enough storage for a new message
     }
 
@@ -62,7 +62,7 @@ shared_message* basic_read_client(shared_connection* connection) {
     message->buffer = malloc(message->size);
     memcpy(message->buffer, (connection->own_payload_buffer+settings->client_read_offset), message->size);
 
-    settings->client_read_offset += message->size;
+    settings->client_read_offset += message->size + sizeof(size_t);
 
     return message;
 } // normal read client
@@ -85,7 +85,7 @@ shared_message* basic_read_server(shared_connection* connection) {
     message->buffer = malloc(message->size);
     memcpy(message->buffer, (connection->own_payload_buffer+settings->server_read_offset), message->size);
 
-    settings->server_read_offset += message->size;
+    settings->server_read_offset += message->size + sizeof(size_t);
 
     return message;
 } // normal read server
